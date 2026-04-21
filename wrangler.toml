@@ -1,0 +1,7 @@
+name = "my-telegram-bot"
+main = "main.py"
+compatibility_date = "2024-04-01"
+compatibility_flags = ["python_workers"]
+
+[vars]
+# TOKEN = "እዚህም ማስገባት ትችላለህ"
