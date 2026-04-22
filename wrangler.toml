@@ -1,4 +1,4 @@
-name = "my-telegram-bot"
+name = "winners"
 main = "main.py"
 compatibility_date = "2024-04-01"
 compatibility_flags = ["python_workers"]
