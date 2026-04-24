@@ -1,7 +1,13 @@
-{
-  "name": "winners-bot",
-  "main": "index.js",
-  "devDependencies": {
-    "wrangler": "^3.0.0"
-  }
-}
+name = "my-bot"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+BOT_TOKEN = "የአንተ_ቦት_ቶከን"
+ADMIN_ID = "የአንተ_ID"
+
+[[d1_databases]]
+binding = "DB" # በኮዱ ውስጥ 'env.DB' ያልነው እዚህ ስለተሰየመ ነው
+database_name = "lottery_db"
+database_id = "የ_D1_DATABASE_ID"
+
