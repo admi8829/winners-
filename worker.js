@@ -1,21 +1,32 @@
-import { Bot, webhookCallback } from "grammy";
-
 export default {
   async fetch(request, env) {
-    // BOT_TOKEN በ Cloudflare Settings -> Variables ውስጥ መኖሩን አረጋግጥ
-    const bot = new Bot(env.BOT_TOKEN);
+    if (request.method === "POST") {
+      try {
+        const update = await request.json();
 
-    // ተጠቃሚው /start ሲል የሚሰጠው ምላሽ
-    bot.command("start", (ctx) => {
-      return ctx.reply("እንኳን ደህና መጡ! ቦቱ በስኬት ተጭኗል።");
-    });
+        // ሜሴጅ መኖሩን እና ጽሁፍ መሆኑን ቼክ ያደርጋል
+        if (update.message && update.message.text) {
+          const chatId = update.message.chat.id;
+          const botToken = env.BOT_TOKEN; // Environment variable
 
-    // ተጠቃሚው ማንኛውንም ጽሁፍ ሲልክ "Hello" ብሎ ይመልሳል
-    bot.on("message:text", (ctx) => {
-      return ctx.reply(`Hello! "${ctx.message.text}" የሚለው መልእክትህ ደርሶኛል።`);
-    });
-
-    // ቴሌግራም መልእክት ሲልክ ለ Cloudflare Worker አሳልፎ ይሰጣል
-    return webhookCallback(bot, "cloudflare-workers")(request);
+          // ወደ ቴሌግራም API መልስ መላክ
+          const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+          
+          await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: "hello",
+            }),
+          });
+        }
+      } catch (e) {
+        return new Response("Error: " + e.message, { status: 500 });
+      }
+    }
+    
+    return new Response("Bot is running!", { status: 200 });
   },
 };
+              
