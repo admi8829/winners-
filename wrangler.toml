@@ -2,11 +2,7 @@ name = "winners"
 main = "index.js"
 compatibility_date = "2024-04-01"
 
-[vars]
-BOT_TOKEN = "8306938740:AAHCDsvpA6qC_eV6GT5fi9ldv3vEmPlekiE"
-ADMIN_ID = "የአንተ_ID"
-
 [[d1_databases]]
 binding = "DB"
 database_name = "lottery_db"
-database_id = "የአንተ_D1_ID"
+database_id = "ባዶ_ይሁን"
