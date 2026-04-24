@@ -1,19 +1,12 @@
-{
-  "name": "telegram-lottery-bot",
-  "version": "1.0.0",
-  "description": "Telegram Lottery Bot for Cloudflare Workers using grammY",
-  "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
-  },
-  "dependencies": {
-    "grammy": "^1.21.1",
-    "@supabase/supabase-js": "^2.39.7"
-  },
-  "devDependencies": {
-    "wrangler": "^3.30.1"
-  }
-}
+name = "winners"
+main = "index.js"
+compatibility_date = "2024-04-01"
 
+[vars]
+BOT_TOKEN = "8306938740:AAHCDsvpA6qC_eV6GT5fi9ldv3vEmPlekiE"
+ADMIN_ID = "የአንተ_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lottery_db"
+database_id = "የአንተ_D1_ID"
