@@ -1,15 +1,12 @@
 import { Bot, session, InlineKeyboard, Keyboard, webhookCallback } from "grammy";
-import { createClient } from "@supabase/supabase-js";
-import { freeStorage } from "@grammyjs/storage-free"; // Cloudflare KV ለ ነፃ storage
 
 export default {
   async fetch(request, env) {
     const bot = new Bot(env.BOT_TOKEN);
-    const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
 
     // 1. Session Setup (ለ State Management)
     bot.use(session({
-      initial: () => ({ step: "idle", lang: "en" }),
+      initial: () => ({ step: "idle" }),
     }));
 
     // --- Helpers ---
@@ -20,132 +17,129 @@ export default {
       } catch { return false; }
     };
 
+    const getUser = async (userId) => {
+      return await env.DB.prepare("SELECT * FROM users WHERE user_id = ?").bind(userId).first();
+    };
+
     const getMainMenu = (lang) => {
       const k = new Keyboard();
       if (lang === "am") {
-        k.text("➕ አዲስ ትኬት ቁረጥ").row().text("👤 የእኔ መረጃ").text("🎁 አሸናፊዎች").row().text("👥 ጓደኛ ጋብዝ").text("💡 እገዛ").row().text("🌐 ቋንቋ");
+        k.text("➕ አዲስ ትኬት ቁረጥ").row().text("👤 የእኔ መረጃ").text("🎁 አሸናፊዎች").row().text("👥 ጓደኛ ጋብዝ").text("💡 እገዛ").row().text("🌐 Language");
       } else {
-        k.text("➕ Buy New Ticket").row().text("👤 My Info").text("🎁 Winners").row().text("👥 Invite Friends").text("💡 Help").row().text("🌐 Language");
+        k.text("➕ Buy Ticket").row().text("👤 My Info").text("🎁 Winners").row().text("👥 Invite").text("💡 Help").row().text("🌐 ቋንቋ");
       }
       return k.resized();
     };
 
-    // --- Handlers ---
-
-    // /start Command
+    // --- Start Command ---
     bot.command("start", async (ctx) => {
       const userId = ctx.from.id;
-      const refId = ctx.match; // ለሪፈራል
+      const user = await getUser(userId);
 
-      const { data: user } = await supabase.from("users").select("*").eq("user_id", userId).single();
-      
       if (!user) {
-        await supabase.from("users").insert({
-          user_id: userId,
-          full_name: ctx.from.first_name,
-          username: ctx.from.username,
-          referred_by: refId && refId != userId ? refId : null,
-          lang: "en"
+        await env.DB.prepare(
+          "INSERT INTO users (user_id, full_name, username, lang) VALUES (?, ?, ?, 'am')"
+        ).bind(userId, ctx.from.first_name, ctx.from.username).run();
+      }
+
+      if (!user?.phone) {
+        ctx.session.step = "waiting_for_phone";
+        return ctx.reply("እንኳን ወደ ሎተሪ ቦት መጡ! ለመመዝገብ ስልክዎን ያጋሩ።", {
+          reply_markup: new Keyboard().requestContact("📲 ስልክ ቁጥር አጋራ").resized().oneTime()
         });
       }
 
-      if (user?.phone) {
-        const joined = await isMember(userId);
-        if (joined) {
-          return ctx.reply(`Welcome back ${ctx.from.first_name}!`, { reply_markup: getMainMenu(user.lang) });
-        }
+      const joined = await isMember(userId);
+      if (!joined) {
+        const kb = new InlineKeyboard().url("📢 ቻናሉን ተቀላቀል", "https://t.me/ethiouh").row().callback("✅ አረጋግጥ", "check_join");
+        return ctx.reply("እባክዎ መጀመሪያ የቴሌግራም ቻናላችንን ይቀላቀሉ!", { reply_markup: kb });
       }
 
-      ctx.session.step = "waiting_for_phone";
-      await ctx.reply(`Hello ${ctx.from.first_name}! Please share your contact to register.`, {
-        reply_markup: new Keyboard().requestContact("📲 Share Contact").resized().oneTime()
-      });
+      await ctx.reply("እንኳን ተመለሱ!", { reply_markup: getMainMenu(user.lang) });
     });
 
-    // ስልክ ቁጥር መቀበያ
+    // --- Contact Handler ---
     bot.on("message:contact", async (ctx) => {
       if (ctx.session.step !== "waiting_for_phone") return;
       const userId = ctx.from.id;
       const phone = ctx.contact.phone_number;
-
-      await supabase.from("users").update({ phone }).eq("user_id", userId);
+      
+      await env.DB.prepare("UPDATE users SET phone = ? WHERE user_id = ?").bind(phone, userId).run();
       ctx.session.step = "idle";
       
-      const kb = new InlineKeyboard()
-        .url("📢 Join Channel", "https://t.me/ethiouh").row()
-        .callback("🔄 Verify", "check_join");
-
-      await ctx.reply("✅ Registered! Now join our channel to continue.", { reply_markup: kb });
+      const kb = new InlineKeyboard().url("📢 ቻናሉን ተቀላቀል", "https://t.me/ethiouh").row().callback("✅ አረጋግጥ", "check_join");
+      await ctx.reply("ምዝገባው ተጠናቅቋል! አሁን ቻናሉን ተቀላቅለው አረጋግጥን ይጫኑ።", { reply_markup: kb });
     });
 
-    // የክፍያ ደረሰኝ መቀበያ (Photo)
+    // --- Photo/Receipt Handler ---
     bot.on("message:photo", async (ctx) => {
       const userId = ctx.from.id;
       const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
 
-      // ለአድሚን መላክ
       await bot.api.sendPhoto(env.ADMIN_ID, photoId, {
-        caption: `📥 New Receipt\nFrom: ${ctx.from.first_name}\nID: ${userId}`,
+        caption: `📥 አዲስ የክፍያ ደረሰኝ\nከ: ${ctx.from.first_name}\nID: ${userId}`,
         reply_markup: new InlineKeyboard()
-          .callback("✅ Approve", `approve_${userId}`)
-          .callback("❌ Reject", `reject_${userId}`)
+          .callback("✅ አጽድቅ", `approve_${userId}`)
+          .callback("❌ ሰርዝ", `reject_${userId}`)
       });
 
-      await ctx.reply("✅ Receipt sent! Admin will verify soon.");
+      await ctx.reply("ደረሰኝዎ ለባለሙያ ተልኳል! በቅርቡ ይረጋገጥልዎታል።");
     });
 
-    // Callback Query Handling (Approve/Reject/Verify)
+    // --- Callback Queries ---
     bot.on("callback_query:data", async (ctx) => {
       const data = ctx.callbackQuery.data;
       const userId = ctx.from.id;
 
       if (data === "check_join") {
-        const joined = await isMember(userId);
-        if (joined) {
-          await ctx.answerCallbackQuery("Verified!");
-          await ctx.editMessageText("Welcome! Use the menu below.", { reply_markup: getMainMenu("en") });
+        if (await isMember(userId)) {
+          const user = await getUser(userId);
+          await ctx.answerCallbackQuery("ተረጋግጧል!");
+          await ctx.editMessageText("እንኳን ደህና መጡ! ትኬት ለመቁረጥ 'አዲስ ትኬት' የሚለውን ይጫኑ።", { reply_markup: getMainMenu(user.lang) });
         } else {
-          await ctx.answerCallbackQuery({ text: "Please join the channel first!", show_alert: true });
+          await ctx.answerCallbackQuery({ text: "እባክዎ መጀመሪያ ቻናሉን ይቀላቀሉ!", show_alert: true });
         }
       }
 
       if (data.startsWith("approve_") && userId == env.ADMIN_ID) {
         const targetId = data.split("_")[1];
-        const ticketNo = `LOT-${Math.floor(100000 + Math.random() * 900000)}`;
-        
-        await supabase.from("tickets").insert({ user_id: targetId, ticket_number: ticketNo, status: "approved" });
-        await bot.api.sendMessage(targetId, `🎉 Approved! Your Ticket: ${ticketNo}`);
-        await ctx.editMessageCaption({ caption: `✅ Approved: ${ticketNo}` });
+        const ticketNo = "ET-" + Math.floor(100000 + Math.random() * 900000);
+        await env.DB.prepare("INSERT INTO tickets (user_id, ticket_number, status) VALUES (?, ?, 'approved')").bind(targetId, ticketNo).run();
+        await bot.api.sendMessage(targetId, `🎉 እንኳን ደስ አለዎት! ክፍያዎ ጸድቋል።\nየሎተሪ ትኬት ቁጥርዎ፡ ${ticketNo}`);
+        await ctx.editMessageCaption({ caption: `✅ ጸድቋል: ${ticketNo}` });
       }
 
-      if (data === "set_am" || data === "set_en") {
-        const lang = data.split("_")[1];
-        await supabase.from("users").update({ lang }).eq("user_id", userId);
-        await ctx.deleteMessage();
-        await ctx.reply(lang === "am" ? "ቋንቋ ተቀይሯል" : "Language Set!", { reply_markup: getMainMenu(lang) });
+      if (data === "set_lang") {
+        const user = await getUser(userId);
+        const newLang = user.lang === "am" ? "en" : "am";
+        await env.DB.prepare("UPDATE users SET lang = ? WHERE user_id = ?").bind(newLang, userId).run();
+        await ctx.reply(newLang === "am" ? "ቋንቋ ተቀይሯል" : "Language Changed", { reply_markup: getMainMenu(newLang) });
+        await ctx.answerCallbackQuery();
       }
     });
 
-    // ሜኑዎችን ማስተናገድ
+    // --- Text Menu Handlers ---
     bot.on("message:text", async (ctx) => {
       const text = ctx.message.text;
       const userId = ctx.from.id;
+      const user = await getUser(userId);
 
-      if (text.includes("አዲስ ትኬት") || text.includes("Buy New Ticket")) {
-        const kb = new InlineKeyboard().callback("💳 Pay via Telebirr", "show_payment");
-        await ctx.reply("Ticket Price: 50 ETB\nSend to: 09XXXXXXXX (Habtamu)", { reply_markup: kb });
+      if (text.includes("አዲስ ትኬት") || text.includes("Buy Ticket")) {
+        await ctx.reply("💳 የክፍያ መመሪያ\n\nበቴሌብር (0911XXXXXX) 50 ብር ይላኩ።\nከከፈሉ በኋላ የክፍያውን ደረሰኝ (Screenshot) እዚህ ይላኩ።");
+      } else if (text.includes("መረጃ") || text.includes("My Info")) {
+        const tickets = await env.DB.prepare("SELECT COUNT(*) as count FROM tickets WHERE user_id = ? AND status = 'approved'").bind(userId).first();
+        const msg = user.lang === "am" 
+          ? `👤 ስም: ${user.full_name}\n📱 ስልክ: ${user.phone}\n🎟 ትኬቶች: ${tickets.count}`
+          : `👤 Name: ${user.full_name}\n📱 Phone: ${user.phone}\n🎟 Tickets: ${tickets.count}`;
+        await ctx.reply(msg);
+      } else if (text.includes("Language") || text.includes("ቋንቋ")) {
+        await ctx.reply("ቋንቋ ለመቀየር / Change Language", {
+          reply_markup: new InlineKeyboard().callback("ቀይር / Change", "set_lang")
+        });
       }
-
-      if (text.includes("ቋንቋ") || text.includes("Language")) {
-        const kb = new InlineKeyboard().callback("አማርኛ 🇪🇹", "set_am").callback("English 🇺🇸", "set_en");
-        await ctx.reply("Choose Language / ቋንቋ ይምረጡ", { reply_markup: kb });
-      }
-      
-      // ሌሎች ሜኑዎች (My Info, Winners...) እዚህ ላይ በተመሳሳይ Logic ይጨመራሉ
     });
 
-    // Webhook setup
     return webhookCallback(bot, "cloudflare-workers")(request);
   }
 };
-      
+        
