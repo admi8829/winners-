@@ -1,5 +1,3 @@
-import { Bot, session, InlineKeyboard, Keyboard, webhookCallback } from "grammy";
-
 export default {
   async fetch(request, env) {
     const bot = new Bot(env.BOT_TOKEN);
